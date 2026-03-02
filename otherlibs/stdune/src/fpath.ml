@@ -158,6 +158,23 @@ type clear_dir_result =
   | Cleared
   | Directory_does_not_exist
 
+let win32_rename_exn src dst =
+  match Unix.rename src dst with
+  | () -> ()
+  | exception Unix.Unix_error (Unix.EACCES, _, _) ->
+    (* Try removing the read-only attribute.
+       Workaround a behavior discrepancy between Unix and Windows of the
+       [Unix.rename] function. It accepts readonly override on Unix but not
+       on Windows. This discrepancy will be fixed in OCaml 5.6 which will
+       include https://github.com/ocaml/ocaml/pull/14602 *)
+    Unix.chmod dst 0o666;
+    Unix.rename src dst
+;;
+
+let rename_exn =
+  if Stdlib.Sys.win32 then fun x y -> win32_rename_exn x y else fun x y -> Unix.rename x y
+;;
+
 let rec clear_dir dir =
   match Readdir.read_directory_with_kinds dir with
   | Error (ENOENT, _, _) -> Directory_does_not_exist

@@ -183,7 +183,9 @@ module Artifacts = struct
                     [rename] operation has a quirk where [path_in_temp_dir] can
                     remain on disk. This is not a problem because we clean the
                     temporary directory later. *)
-                 Path.rename path_in_temp_dir path_in_build_dir
+                 Fpath.rename_exn
+                   (Path.to_string path_in_temp_dir)
+                   (Path.to_string path_in_build_dir)
                with
                | exception e -> Store_result.Error e
                | () -> Already_present)
