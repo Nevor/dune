@@ -434,31 +434,28 @@ let portable_hardlink ~src ~dst =
       ; Pp.textf "Reason: %s" msg
       ]
   in
-  (* CR-someday amokhov: Instead of always falling back to copying, we could
-     detect if hardlinking works on Windows and if yes, use it. We do this in
-     the Dune cache implementation, so we can share some code. *)
-  match Stdlib.Sys.win32 with
-  | true -> copy_file ~src ~dst ()
-  | false ->
-    let src =
-      match Fpath.follow_symlink (Path.to_string src) with
-      | Ok path -> Path.of_string path
-      | Error Not_a_symlink -> src
-      | Error Max_depth_exceeded ->
-        user_error "Too many indirections; is this a cyclic symbolic link?"
-      | Error (Unix_error error) -> user_error (Unix_error.Detailed.to_string_hum error)
-    in
-    (try Path.link src dst with
-     | Unix.Unix_error (Unix.EEXIST, _, _) ->
-       (* CR-someday amokhov: Investigate why we need to occasionally clear the
-          destination (we also do this in the symlink case above). Perhaps, the
-          list of dependencies may have duplicates? If yes, it may be better to
-          filter out the duplicates first. *)
-       Path.unlink_exn dst;
-       Path.link src dst
-     | Unix.Unix_error (Unix.EMLINK, _, _) ->
-       (* If we can't make a new hard link because we reached the limit on the
-          number of hard links per file, we fall back to copying. We expect
-          that this happens very rarely (probably only for empty files). *)
-       copy_file ~src ~dst ())
+  let src =
+    match Fpath.follow_symlink (Path.to_string src) with
+    | Ok path -> Path.of_string path
+    | Error Not_a_symlink -> src
+    | Error Max_depth_exceeded ->
+      user_error "Too many indirections; is this a cyclic symbolic link?"
+    | Error (Unix_error error) -> user_error (Unix_error.Detailed.to_string_hum error)
+  in
+  try Path.link src dst with
+  | Unix.Unix_error (Unix.EEXIST, _, _) ->
+    (* CR-someday amokhov: Investigate why we need to occasionally clear the
+        destination (we also do this in the symlink case above). Perhaps, the
+        list of dependencies may have duplicates? If yes, it may be better to
+        filter out the duplicates first. *)
+    Path.unlink_exn dst;
+    Path.link src dst
+  | Unix.Unix_error (Unix.EINVAL, _, _)
+  (* If the file system do not support hard links. Should not really happen in
+      practice (NTFS and ReFS do support hard links on windows.) *)
+  | Unix.Unix_error (Unix.EMLINK, _, _) ->
+    (* If we can't make a new hard link because we reached the limit on the
+        number of hard links per file, we fall back to copying. We expect
+        that this happens very rarely (probably only for empty files). *)
+    copy_file ~src ~dst ()
 ;;
